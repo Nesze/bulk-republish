@@ -15,6 +15,7 @@ import (
 var uuidsFileName = flag.String("uuids", "", "Path to uuids file")
 var readEndpoint = flag.String("read", "", "Native store GET endpoint")
 var postEndpoint = flag.String("post", "", "CMS Notifier POST endpoint")
+var concurrent = flag.Bool("concurrency", true, "Disable concurrent publish")
 
 var collectionToSystemOrigin = map[string]string{"methode": "methode-web-pub", "wordpress": "wordpress"}
 var collections = []string{"methode", "wordpress"}
@@ -23,6 +24,7 @@ func main() {
 	InitLogs(os.Stdout, os.Stdout, os.Stderr)
 	flag.Parse()
 
+	Info.Printf("Concurrency set: [%t].", *concurrent)
 	uuids, err := parseUUIDs(*uuidsFileName)
 	if err != nil {
 		Warn.Printf("Cannot read uuids file: [%v]", err)
@@ -40,7 +42,11 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(len(uuids))
 	for _, id := range uuids {
-		go republish(id, &wg)
+		if *concurrent {
+			go republish(id, &wg)
+		} else {
+			republish(id, &wg)
+		}
 	}
 	wg.Wait()
 }
