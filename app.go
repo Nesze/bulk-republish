@@ -39,24 +39,34 @@ func main() {
 	}
 	//Info.Printf("Nr of uuids after validation: [%d].", len(uuids))
 
+	b := bulkRepublish{}
 	var wg sync.WaitGroup
 	wg.Add(len(uuids))
 	for _, id := range uuids {
 		if *concurrent {
-			go republish(id, &wg)
+			go b.republish(id, &wg)
 		} else {
-			republish(id, &wg)
+			b.republish(id, &wg)
 		}
 	}
 	wg.Wait()
 }
 
-func republish(id string, wg *sync.WaitGroup) {
+type bulkRepublish struct {
+	client http.Client
+}
+
+func (b bulkRepublish) republish(id string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	found := false
 	for coll, systemOrigin := range collectionToSystemOrigin {
 		readURL := *readEndpoint + "/" + coll + "/" + id
-		resp, err := http.Get(readURL)
+		req, err := http.NewRequest("GET", readURL, nil)
+		if err != nil {
+			Warn.Printf("Failure in creating POST request: [%v]", err)
+			continue
+		}
+		resp, err := b.client.Do(req)
 		if err != nil {
 			Warn.Printf("GET request failure for UUID [%s]: [%v].", id, err)
 			continue
@@ -72,13 +82,13 @@ func republish(id string, wg *sync.WaitGroup) {
 		found = true
 
 		//post content
-		client := &http.Client{}
-		req, err := http.NewRequest("POST", *postEndpoint, resp.Body)
+		req, err = http.NewRequest("POST", *postEndpoint, resp.Body)
 		if err != nil {
 			Warn.Printf("Failure in creating POST request: [%v]", err)
+			return
 		}
 		req.Header.Add("X-Origin-System-Id", systemOrigin)
-		resp, err = client.Do(req)
+		resp, err = b.client.Do(req)
 		if err != nil {
 			Warn.Printf("POST request failure for UUID [%s]: [%v]", id, err)
 			return
